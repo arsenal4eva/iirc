@@ -8,29 +8,29 @@ repoaddr="https://raw.githubusercontent.com/arsenal4eva/iirc/main"
 dir="$HOME/.iirc"
 
 red='\033[0;31m'
-green='\33[;32m'
-yellow='\033[0;32m'
+green='\033[0;32m'
+yellow='\033[1;33m'
 reset='\033[0m'
 
 info() {
-echo -e "${GREEEN}[+]${RESET} $1"
+echo -e "${green}[+]${reset} $1"
 }
 
 warn() {
-echo -e "${YELLOW}[!]${RESET} $1"
+echo -e "${yellow}[!]${reset} $1"
 }
 
 error() {
-echo -e "${RED}[-]${RESET} $1"
+echo -e "${red}[-]${reset} $1"
 exit 1
 }
 
 
 findos() {
 case "$(uname -s)" in
-	LINUX*) 
+	Linux*) 
 		echo "linux" ;;
-	DARWIN*) 
+	Darwin*) 
 		echo "macos" ;;
 	MINGW*|MSYS*|CYGWIN*)
 		echo "windows" ;;
@@ -51,9 +51,9 @@ echo
 
 info "Current OS: $OS"
 
-[[ "$OS"!="unsupported"]] || error "Unsupported os."
+[[ "$OS" != "unsupported" ]] || error "Unsupported os."
 
-command -v bash >/dev/null 2>&1 || "Bash is required."
+command -v bash >/dev/null 2>&1 || error "Bash is required."
 
 if ! command -v nc >/dev/null 2>&1; then
 warn "Netcat not found."
@@ -79,10 +79,12 @@ mkdir -p "$dir"/{main,os}
 mkdir -p "$dir"/data/{config,sessions,logs}
 
 downloadfiles() {
-local reemote="$1"
+local remote="$1"
 local destination="$2"
 info "Download $remote"
-curl -fsSL "$REPO/$remote" -o "$destination" || {error "Failed to download $remote"}
+if ! curl -fsSL "$repoaddr/$remote" -o "$destination"; then 
+	error "Failed to download $remote"
+fi
 }
 
 downloadfiles "iirc.sh" "$dir/iirc.sh"
@@ -99,7 +101,7 @@ done
 chmod +x "$dir/iirc.sh"
 
 echo
-echo "iirc v$VERSION installed hooray"
+echo "iirc v$ver installed hooray"
 echo 
 
 echo "installed in $dir"
