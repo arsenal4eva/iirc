@@ -3,6 +3,8 @@
 a way for two people to chat\
 This is largely inspired by Internet Relay Chat (IRC)
 
+![demo.png](demo.png)
+
 ## Installation
 
 ```sh
