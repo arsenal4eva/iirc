@@ -1,41 +1,41 @@
 #! /usr/bin/env bash
 
 linuxinit() {
-os="linux"
+	os="linux"
 
-if ! command -v bash >/dev/null 2>&1; then
-	error "Bash is required"
-	return 1
-fi
+	if ! have bash; then
+		error "bash is required"
+		return 1
+	fi
 
-if ! command -v nc >/dev/null 2>&1; then
-	warn "Nc is not installed"
-	warn "Install using sudo apt install netcat-openbsd"
-	return 1
-fi
+	if ! have nc && ! have ncat && ! have netcat; then
+		warn "netcat is not installed"
+		warn "install it with: sudo apt install netcat-openbsd"
+		return 0
+	fi
 
-if ! command -v ip >/dev/null 2>&1; then
-	warn "the ip command is not installed"
-	return 1
-fi
+	if ! have ip && ! have hostname; then
+		warn "could not find 'ip' or 'hostname'; ip detection may fail"
+	fi
 
-info "ur linux env is ready"
+	info "linux environment is ready"
+	return 0
 }
-
 
 linuxcheckport() {
-local port="$1"
-if command -v ss >/dev/null 2>&1; then
-	! ss -lnt 2>/dev/null | awk '{print $4}' | grep -Eq "[:.]${port}$"
-elif command -v netstat >/dev/null 2>&1; then
-	! netstat -lnt 2>/dev/null | awk '{print $4}' | grep -Eq "[:.]${port}$"
-else
-	warn "cannot check if port $port is in use"
+	local port="$1"
+
+	checkport "$port" || return 1
+
+	if have ss; then
+		ss -H -lnt 2>/dev/null | awk '{print $4}' | grep -Eq "[:.]${port}$" && return 1
+	elif have netstat; then
+		netstat -lnt 2>/dev/null | awk 'NR > 2 {print $4}' | grep -Eq "[:.]${port}$" && return 1
+	fi
+
 	return 0
-fi
 }
 
-
 linuxgetip() {
-findip
+	findip
 }

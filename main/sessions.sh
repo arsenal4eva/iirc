@@ -1,206 +1,288 @@
 #! /usr/bin/env bash
 
-sessiondir="$rootdir/data/sessions"
 
 createsession() {
-local name="$1"
-local type="$2"
-local host="$3"
-local port="$4"
+	local name type host port
 
-if [[ -z "$name" || -z "$type" || -z "$host" || -z "$port" ]]; then
-	error "missing session info"
-	return 1
-fi
+	name="$(sanitize_text "$(trim "${1:-}")")"
+	type="$(trim "${2:-}")"
+	host="$(sanitize_text "$(trim "${3:-}")")"
+	port="$(trim "${4:-}")"
 
-if [[ "$type" != "host" && "$type" != "connect" ]]; then
-	error "invalid session type"
-	return 1
-fi
+	if [[ -z "$name" || -z "$type" || -z "$host" || -z "$port" ]]; then
+		error "missing session info"
+		return 1
+	fi
 
-if ! chackport "$port"; then
-	error "invalid port"
-	return 1
-fi
+	if [[ "$type" != "host" && "$type" != "connect" ]]; then
+		error "invalid session type: $type"
+		return 1
+	fi
 
-local id
-id="$(sesid)"
+	if ! checkport "$port"; then
+		error "invalid port: $port"
+		return 1
+	fi
 
-local created
-created="$(getdate)"
-local sessionfile
-sessionfile="$sessiondir/$id.conf"
-mkdir -p "$sessiondir"
-cat > "$sessionfile" <<EOF
-id="$id"
-name="$name"
-type="$type"
-host="$host"
-port="$port"
-status="stopped"
-pid=""
-created="$created"
-logfile="$rootdir/data/logs/$id.log"
-EOF
+	if ! checkhost "$host"; then
+		error "invalid host: $host"
+		return 1
+	fi
 
-info "session created: $name" >&2
-printf '%s\n' "$id"
+	local id created sessionfile
+	id="$(sesid)"
+	created="$(getdate)"
+	sessionfile="$sessiondir/$id.conf"
+
+	mkdir -p "$sessiondir" || return 1
+
+	(
+		umask 077
+		{
+			printf 'id="%s"\n' "$id"
+			printf 'name="%s"\n' "$name"
+			printf 'type="%s"\n' "$type"
+			printf 'host="%s"\n' "$host"
+			printf 'port="%s"\n' "$port"
+			printf 'status="stopped"\n'
+			printf 'pid=""\n'
+			printf 'created="%s"\n' "$created"
+			printf 'logfile="%s"\n' "$logs/$id.log"
+		} > "$sessionfile"
+	) || {
+		error "could not write session file"
+		return 1
+	}
+
+	info "session created: $name" >&2
+	printf '%s\n' "$id"
 }
 
 loadsession() {
-local id="$1"
-	
-if [[ ! "$id" =~ ^[a-f0-9]+$ ]]; then
-	error "invalid session id"
-	return 1
-fi
+	local id="$1"
 
-local sessionfile="$sessiondir/$id.conf"
+	session_id=""
+	session_name=""
+	session_type=""
+	session_host=""
+	session_port=""
+	session_status="stopped"
+	session_pid=""
+	session_created=""
+	session_logfile=""
 
-if [[ ! -f "$sessionfile" ]]; then
-	error "session not found"
-	return 1
-fi
+	if ! validid "$id"; then
+		error "invalid session id: $id"
+		return 1
+	fi
 
-while IFS='=' read -r key value; do
-	value="${value%\"}"
-	value="${value#\"}"
+	local sessionfile="$sessiondir/$id.conf"
+	if [[ ! -f "$sessionfile" ]]; then
+		error "session not found: $id"
+		return 1
+	fi
 
-	case "$key" in
-		id) session_id="$value";;
-		name) session_name="$value" ;;
-		type) session_type="$value" ;;
-		host) session_host="$value" ;;
-		port)
-			if chackport "$value"; then
-				session_port="$value"
-			fi
-			;;
-		status) session_status="$value" ;;
-		pid) session_pid="$value" ;;
-		created) session_created="$value" ;;
-		logfile) session_logfile="$value" ;; 
-	esac
-done < "$sessionfile"
-}
-
-
-listsessions() {
-mkdir -p "$sessiondir"
-local found=false
-printf 'n%-12s %-20s %-18s %-8s\n' "ID" "NAME" "TYPE" "HOST" "PORT"
-
-printf '%s\n' "--------------------------------------------------------------------------"
-for sessionfile in "$sessiondir"/*.conf; do
-	[[ -f "$sessionfile" ]] || continue
-	local id name type host port
-	id=""
-	name=""
-	type=""
-	host=""
-	port=""
-
-	while IFS='=' read -r key value; do
-		value="${value%\"}"
+	local key value
+	while IFS='=' read -r key value || [[ -n "$key" ]]; do
+		key="$(trim "${key%$'\r'}")"
+		value="${value%$'\r'}"
 		value="${value#\"}"
+		value="${value%\"}"
 
 		case "$key" in
-			id) id="$value" ;;
-			name) name="$value" ;;
-			type) type="$value" ;;
-			host) host="$value" ;;
-			port) port="$value" ;;
+			id) session_id="$value" ;;
+			name) session_name="$value" ;;
+			type) session_type="$value" ;;
+			host) session_host="$value" ;;
+			port)
+				if checkport "$value"; then
+					session_port="$value"
+				fi
+				;;
+			status) session_status="$value" ;;
+			pid) session_pid="$value" ;;
+			created) session_created="$value" ;;
+			logfile) session_logfile="$value" ;;
 		esac
 	done < "$sessionfile"
-	printf '%-12s %-20.20s %-10s %-18s %-8s\n' "$id" "$name" "$type" "$host" "$port"
 
-	found=true
-done
+	return 0
+}
 
-if [[ "$found" == false ]]; then
-	warn "no saved sessions"
-fi
+listsessions() {
+	mkdir -p "$sessiondir"
 
-echo
+	local files=("$sessiondir"/*.conf)
+	if [[ ! -e "${files[0]}" ]]; then
+		warn "no saved sessions"
+		return 1
+	fi
 
+	printf '%-10s %-20s %-8s %-16s %-6s %s\n' "ID" "NAME" "TYPE" "HOST" "PORT" "STATUS"
+	printf '%s\n' "--------------------------------------------------------------------------------"
+
+	local found=0 id name type host port status pid live
+	while IFS=$'\t' read -r id name type host port status pid; do
+		[[ -n "$id" ]] || continue
+		found=1
+
+		live="$status"
+		if [[ "$status" == "running" ]]; then
+			if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+				live="running"
+			else
+				live="stopped"
+			fi
+		fi
+
+		printf '%-10s %-20.20s %-8s %-16s %-6s %s\n' \
+			"$id" "$name" "$type" "${host:--}" "${port:--}" "$live"
+	done < <(
+		awk -F'"' '
+			function emit() {
+				if (id != "")
+					print id "\t" name "\t" type "\t" host "\t" port "\t" status "\t" pid
+			}
+			FNR == 1 {
+				if (NR > 1)
+					emit()
+				id = name = type = host = port = status = pid = ""
+			}
+			$1 == "id=" { id = $2 }
+			$1 == "name=" { name = $2 }
+			$1 == "type=" { type = $2 }
+			$1 == "host=" { host = $2 }
+			$1 == "port=" { port = $2 }
+			$1 == "status=" { status = $2 }
+			$1 == "pid=" { pid = $2 }
+			END { emit() }
+		' "${files[@]}"
+	)
+
+	echo
+	(( found == 1 ))
 }
 
 updatesession() {
-local id="$1"
-local key="$2"
-local value="$3"
+	local id="$1"
+	local key="$2"
+	local value="$3"
 
-if [[ ! "$id" =~ ^[a-f0-9]+$ ]]; then
-	error "invalid session id"
-	return 1
-fi
-
-local sessionfile="$sessiondir/$id.conf"
-
-if [[ ! -f "$sessionfile" ]]; then
-	error "session not found"
-	return 1
-fi
-
-case "$key" in
-	name|host|status|pid|logfile)
-		;;
-	port)
-		if !chackport "$value"; then
-			error "invalid port"
-			return 1
-		fi
-		;;
-	type)
-		if [[ "$value" != "host" && "$value" != "connect" ]]; then
-			error "invalid session type"
-			return 1
-		fi
-		;;
-	*)
-		error "invalid session field"
+	if ! validid "$id"; then
+		error "invalid session id: $id"
 		return 1
-		;;
-esac
+	fi
 
-local tempfile
-tempfile="$(mktemp)" || return 1
+	local sessionfile="$sessiondir/$id.conf"
+	if [[ ! -f "$sessionfile" ]]; then
+		error "session not found: $id"
+		return 1
+	fi
 
-awk -F= -v key="$key" -v value="$value" '
-	$1 == key {
-		print key "=\"" value "\""
-		found=1
-		next
+	case "$key" in
+		name)
+			value="$(sanitize_text "$(trim "$value")")"
+			[[ -n "$value" ]] || { error "empty session name"; return 1; }
+			;;
+		host)
+			value="$(sanitize_text "$(trim "$value")")"
+			checkhost "$value" || { error "invalid host: $value"; return 1; }
+			;;
+		status)
+			case "$value" in
+				running|stopped) ;;
+				*) error "invalid status: $value"; return 1 ;;
+			esac
+			;;
+		pid)
+			if [[ -n "$value" && ! "$value" =~ ^[0-9]+$ ]]; then
+				error "invalid pid: $value"
+				return 1
+			fi
+			;;
+		port)
+			if ! checkport "$value"; then
+				error "invalid port: $value"
+				return 1
+			fi
+			;;
+		type)
+			if [[ "$value" != "host" && "$value" != "connect" ]]; then
+				error "invalid session type: $value"
+				return 1
+			fi
+			;;
+		logfile)
+			value="$(sanitize_text "$value")"
+			;;
+		*)
+			error "invalid session field: $key"
+			return 1
+			;;
+	esac
+
+	local tmp
+	tmp="$(mktemp "$sessiondir/.session.XXXXXX" 2>/dev/null)" || return 1
+
+	awk -F'=' -v key="$key" -v value="$value" '
+		$1 == key {
+			printf "%s=\"%s\"\n", key, value
+			found = 1
+			next
+		}
+		{ print }
+		END {
+			if (!found)
+				printf "%s=\"%s\"\n", key, value
+		}
+	' "$sessionfile" > "$tmp" || {
+		rm -f "$tmp"
+		return 1
 	}
-	{print}
-	END {
-		if (!found) print key "=\"" value "\""
+
+	chmod 600 "$tmp" 2>/dev/null || true
+	mv -f "$tmp" "$sessionfile" || {
+		rm -f "$tmp"
+		return 1
 	}
-' "$sessionfile" > "$tempfile"
-mv "$tempfile" "$sessionfile"
 }
-
 
 deletesession() {
-local id="$1"
+	local id="$1"
 
-if [[ ! "$id" =~ ^[a-f0-9]+$ ]]; then
-	error "invalid session id"
-	return 1
-fi
+	if ! validid "$id"; then
+		error "invalid session id: $id"
+		return 1
+	fi
 
-local sessionfile="$sessiondir/$id.conf"
+	local sessionfile="$sessiondir/$id.conf"
+	if [[ ! -f "$sessionfile" ]]; then
+		error "session not found: $id"
+		return 1
+	fi
 
-if [[ ! -f "$sessionfile" ]]; then
-	error "session notf ound"
-	return 1
-fi
+	local logfile pid
+	logfile="$(awk -F'"' '$1 == "logfile=" { print $2; exit }' "$sessionfile")"
+	pid="$(awk -F'"' '$1 == "pid=" { print $2; exit }' "$sessionfile")"
 
-rm -rf "$sessionfile"
-info "session has been deletd"
+	if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+		kill "$pid" 2>/dev/null || true
+	fi
+
+	rm -f "$sessionfile" || return 1
+
+	if [[ -n "$logfile" && "$logfile" == "$logs"/* && -f "$logfile" ]]; then
+		rm -f "$logfile"
+	fi
+
+	info "session deleted"
 }
 
+sessionexists() {
+	validid "$1" && [[ -f "$sessiondir/$1.conf" ]]
+}
 
 initsessions() {
-mkdir -p "$sessiondir"
+	mkdir -p "$sessiondir" || return 1
+	chmod 700 "$sessiondir" 2>/dev/null || true
 }

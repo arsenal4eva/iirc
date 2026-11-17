@@ -1,43 +1,42 @@
 #! /usr/bin/env bash
 
 windowsinit() {
-os="windows"
-if ! command -v bash >/dev/null 2>&1; then
-	error "Bash is required. u can use Git Bash or MSYS2"
-	return 1
-fi
+	os="windows"
 
-if ! command -v nc >/dev/null 2>&1; then
-	error "Nc is not installed"
-	warn "install nc using MSYS2 or add nc.exe to ur Path"
-	return 1
-fi
+	if ! have bash; then
+		error "bash is required (use Git Bash or MSYS2)"
+		return 1
+	fi
 
-if ! command -v ipconfig >/dev/null 2>&1; then
-	error "ipconfig is unavailable"
-	return 1
-fi
+	if ! have nc && ! have ncat && ! have netcat; then
+		error "netcat is not installed"
+		warn "install nc with MSYS2, or add nc.exe to your PATH"
+		return 0
+	fi
 
-info "windows env ready"
+	if ! have ipconfig; then
+		warn "ipconfig is unavailable; ip detection may fail"
+	fi
+
+	info "windows environment is ready"
+	return 0
 }
 
 windowscheckport() {
-local port="$1"
-if ! chackport "$port"; then
-	return 1
-fi
+	local port="$1"
 
-if command -v powershell.exe >/dev/null 2>&1; then
-	powershell.exe -NoProfile -Command \
-		"if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) { exit 1 } else { exit 0 }" \
-		>/dev/null 2>&1
-	return $?
-fi
+	checkport "$port" || return 1
 
-warn "Cannot check whether port $port is in use"
-return 0
+	if have powershell.exe; then
+		powershell.exe -NoProfile -Command \
+			"if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) { exit 1 } else { exit 0 }" \
+			>/dev/null 2>&1
+		return $?
+	fi
+
+	return 0
 }
 
 windowsgetip() {
-findip
+	findip
 }

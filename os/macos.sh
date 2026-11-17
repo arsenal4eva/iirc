@@ -1,43 +1,39 @@
 #! /usr/bin/env bash
 
 macosinit() {
-os="macos"
-if ! command -v bash >/dev/null 2>&1; then
-	error "Bash is required"
-	return 1
-fi
+	os="macos"
 
-if ! command -v nc >/dev/null 2>&1; then
-	error "Nc is not installed"
-	warn "Nc should come with macos by default"
-	return 1
-fi
+	if ! have bash; then
+		error "bash is required"
+		return 1
+	fi
 
-if ! command -v route >/dev/null 2>&1; then
-	error "the route command is unavailable"
-	return 1
-fi
+	if ! have nc && ! have ncat; then
+		error "netcat is not installed"
+		warn "netcat ships with macOS; check your PATH"
+		return 0
+	fi
 
-info "your macos env is good to go"
+	if ! have route; then
+		warn "the route command is unavailable; ip detection may fail"
+	fi
+
+	info "macOS environment is good to go"
+	return 0
 }
 
-
 macoscheckport() {
-local port="$1"
+	local port="$1"
 
-if ! chackport "$port"; then
-	return 1
-fi
+	checkport "$port" || return 1
 
-if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then 
-	return 1
-fi
+	if have lsof; then
+		lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1 && return 1
+	fi
 
-return 0
+	return 0
 }
 
 macosgetip() {
-findip
+	findip
 }
-
-

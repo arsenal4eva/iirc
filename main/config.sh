@@ -1,83 +1,118 @@
 #!/usr/bin/env bash
 
-configfile="$conf/settings.conf"
 
 setdefaults() {
-    username="${USER:-user}"
-    defaultport="4444"
-    timestamps="true"
-    save_logs="true"
-    auto_reconnect="false"
+	username="${USER:-${LOGNAME:-user}}"
+	defaultport="4444"
+	timestamps="true"
+	save_logs="true"
+	auto_reconnect="false"
+}
+
+normalise_bool() {
+	local value
+
+	value="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+	case "$value" in
+		true|1|yes|on) printf 'true'; return 0 ;;
+		false|0|no|off) printf 'false'; return 0 ;;
+	esac
+	return 1
+}
+
+setusername() {
+	local name
+	local old="$username"
+
+	name="$(sanitize_text "$(trim "$1")")"
+	[[ -n "$name" ]] || return 1
+
+	username="${name:0:32}"
+	[[ -n "$(trim "$username")" ]] || { username="$old"; return 1; }
+	return 0
 }
 
 createconfig() {
-if [[ ! -f "$configfile" ]]; then
-    info "Creating default configs"
-
-    setdefaults
-
-cat > "$configfile" <<EOF
-username="$username"
-defaultport="$defaultport"
-timestamps="$timestamps"
-save_logs="$save_logs"
-auto_reconnect="$auto_reconnect"
-EOF
-fi
+	[[ -f "$configfile" ]] || {
+		info "Creating default config"
+		setdefaults
+		saveconfig quiet
+	}
 }
 
 loadconfig() {
-    setdefaults
+	setdefaults
 
-    if [[ ! -f "$configfile" ]]; then
-        createconfig
-    fi
+	createconfig
 
-    while IFS='=' read -r key value; do
+	local key value
+	while IFS='=' read -r key value || [[ -n "$key" ]]; do
+		key="$(trim "${key%$'\r'}")"
+		value="$(trim "${value%$'\r'}")"
 
-        value="${value%\"}"
-        value="${value#\"}"
+		[[ -z "$key" || "$key" == \#* ]] && continue
+		key="${key#export }"
 
-        case "$key" in
-            username)
-                username="$value"
-                ;;
-            defaultport)
-                if chackport "$value"; then
-                    defaultport="$value"
-                fi
-                ;;
-            timestamps)
-                timestamps="$value"
-                ;;
-            save_logs)
-                save_logs="$value"
-                ;;
-            auto_reconnect)
-                auto_reconnect="$value"
-                ;;
-        esac
+		value="${value#\"}"
+		value="${value%\"}"
+		value="${value#\'}"
+		value="${value%\'}"
 
-    done < "$configfile"
+		case "$key" in
+			username)
+				setusername "$value" || true
+				;;
+			defaultport)
+				if checkport "$value"; then
+					defaultport="$value"
+				fi
+				;;
+			timestamps)
+				value="$(normalise_bool "$value")" && timestamps="$value"
+				;;
+			save_logs)
+				value="$(normalise_bool "$value")" && save_logs="$value"
+				;;
+			auto_reconnect)
+				value="$(normalise_bool "$value")" && auto_reconnect="$value"
+				;;
+		esac
+	done < "$configfile"
 }
 
 saveconfig() {
-cat > "$configfile" <<EOF
-username="$username"
-defaultport="$defaultport"
-timestamps="$timestamps"
-save_logs="$save_logs"
-auto_reconnect="$auto_reconnect"
-EOF
+	local quiet="${1:-}"
 
-info "Config saved"
+	mkdir -p "$(dirname "$configfile")" || return 1
+
+	local tmp
+	tmp="$(mktemp "${configfile}.XXXXXX" 2>/dev/null)" || return 1
+
+	{
+		printf 'username="%s"\n' "$username"
+		printf 'defaultport="%s"\n' "$defaultport"
+		printf 'timestamps="%s"\n' "$timestamps"
+		printf 'save_logs="%s"\n' "$save_logs"
+		printf 'auto_reconnect="%s"\n' "$auto_reconnect"
+	} > "$tmp" || {
+		rm -f "$tmp"
+		return 1
+	}
+
+	chmod 600 "$tmp" 2>/dev/null || true
+	mv -f "$tmp" "$configfile" || {
+		rm -f "$tmp"
+		return 1
+	}
+
+	[[ "$quiet" == "quiet" ]] || info "Config saved"
 }
 
 initconfig() {
-mkdir -p "$(dirname "$configfile")"
+	mkdir -p "$(dirname "$configfile")" || return 1
 
-createconfig
-loadconfig
+	createconfig
+	loadconfig
 
-info "Config loaded"
+	info "Config loaded"
 }
