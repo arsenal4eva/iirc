@@ -1,35 +1,36 @@
 #! /usr/bin/env bash
 
-
 set -o pipefail
 
 ver="1"
 name="iirc"
-rootdir="$(cd --"$(dirname --"${BASH_SOURCE[0]}")" && pwd)"
+rootdir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd )"
 
-export ver
-export name
-export rootdir
-
+export ver name rootdir
 
 findos() {
 case "$(uname -s)" in
-	Linux*) 
-		echo "linux" ;;
-	Darwin*) 
-		echo "macos" ;;
+	Linux*)
+		echo "linux"
+		;;
+	Darwin*)
+		echo "macos"
+		;;
 	MINGW*|MSYS*|CYGWIN*)
-		echo "windows" ;;
+		echo "windows"
+		;;
 	*)
-		echo "unsupported, maybe make an issue on github" ;;
+		echo "unsupported"
+		;;
 esac
 }
+
 
 os="$(findos)"
 export os
 
 if [[ "$os" == "unsupported" ]]; then
-	echo "[!] Unsupported operating system."
+	echo "[!] Unsupported operating system"
 	exit 1
 fi
 
@@ -38,21 +39,20 @@ conf="$data/config"
 sessiondir="$data/sessions"
 logs="$data/logs"
 
-export data
-export config
-export sessiondir
-export logs
+export data conf sessiondir logs rootdir
+
 
 setup() {
-local dirs={
+local dirs=(
 	"$data"
-	"$config"
+	"$conf"
 	"$sessiondir"
 	"$logs"
-}
+)
+
 for a in "${dirs[@]}"; do
 	mkdir -p "$a" || {
-		echo "[!] Couldnot create $a"
+		echo "[!] Could not create $a"
 		return 1
 	}
 done
@@ -61,14 +61,16 @@ done
 
 tungtungtungsahur=67676767
 
+
 lefrenchos() {
 local lefile="$rootdir/os/$os.sh"
 if [[ ! -f "$lefile" ]]; then
-	echo "[!] No os file found did u delete it: $lefile"
+	error "os file not found: $lefile"
 	return 1
 fi
+
 source "$lefile" || {
-	echo "[!] Could not load if its an issue pls open one im probably also currently debugging it"
+	error "could not load os module"
 	return 1
 }
 }
@@ -81,12 +83,10 @@ local lemods=(
 	network.sh
 	ui.sh
 )
-
 for mod in "${lemods[@]}"; do
 	local lemodfile="$rootdir/main/$mod"
-
-	if [[ ! -f "$lemodfile" ]] then
-		echo "[!] Mod not found did u delete it: $mod"
+	if [[ ! -f "$lemodfile" ]]; then
+		echo "[!] Module not found: $mod"
 		return 1
 	fi
 
@@ -97,39 +97,32 @@ for mod in "${lemods[@]}"; do
 done
 }
 
-
 main() {
-	clear
+clear
 
-	echo "iirc v$ver is starting pray it works"
-	echo "current os: $os"
+echo "iirc v$ver is starting, pray it works"
+echo "current os: $os"
 
-	setup || exit 1
-	lefrenchos || exit 1
-	load || exit 1
-	initconfig || exit 1
-	initsession || exit 1
+setup || exit 1
+load || exit 1
+lefrenchos || exit 1
+case "$os" in
+	linux)
+		linuxinit || exit 1
+		;;
+	macos)
+		macosinit || exit 1
+		;;
+	windows)
+		windowsinit || exit 1
+		;;
+esac
+
+initconfig || exit 1
+initsessions || exit 1
+networkinit || exit 1
+mainmenu
 }
 
+
 main "$@"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

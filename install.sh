@@ -1,6 +1,5 @@
 #! /usr/bin/env bash
 
-
 set -e
 
 ver="1"
@@ -35,7 +34,7 @@ case "$(uname -s)" in
 	MINGW*|MSYS*|CYGWIN*)
 		echo "windows" ;;
 	*)
-		echo "unsupported, maybe make an issue on github" ;;
+		echo "unsupported" ;;
 esac
 }
 
