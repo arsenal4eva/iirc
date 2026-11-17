@@ -56,7 +56,7 @@ read -r -p "Port [$defaultport]: " port
 port="${port:-$defaultport}"
 
 if ! chackport "$port"; then
-	error "invalid port"
+	warn "invalid port"
 	clearpage
 	return
 fi
@@ -84,7 +84,7 @@ echo "Connect to a chat"
 echo "-----------------"
 
 read -r -p "Session name: " name
-[[ -m "$name" ]] || {
+[[ -n "$name" ]] || {
 	warn "session name cannot be empty"
 	clearpage
 	return
@@ -92,7 +92,7 @@ read -r -p "Session name: " name
 
 read -r -p "Host ip addr: " host
 if ! checkip "$host"; then
-	error "Invalid ip addr"
+	warn "Invalid ip addr"
 	clearpage
 	return
 fi
@@ -101,7 +101,7 @@ read -r -p "Port [$defaultport]: " port
 port="${port:-$defaultport}"
 
 if ! chackport "$port"; then
-	error "invalid port"
+	warn "invalid port"
 	clearpage
 	return
 fi
@@ -190,14 +190,14 @@ while true; do
 				defaultport="$port"
 				saveconfig
 			else
-				error "invalid port"
+				warn "invalid port"
 			fi
 			;;
 		3)
 			if [[ "$timestamps" == "true" ]]; then
 				timestamps="false"
 			else
-				timestamps=""true
+				timestamps="true"
 			fi
 			saveconfig
 			;;

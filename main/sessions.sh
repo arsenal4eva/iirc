@@ -43,7 +43,7 @@ created="$created"
 logfile="$rootdir/data/logs/$id.log"
 EOF
 
-info "session created: $name"
+info "session created: $name" >&2
 printf '%s\n' "$id"
 }
 
