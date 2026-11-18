@@ -4,6 +4,8 @@ NC_BIN=""
 NC_LISTEN_ARGS=()
 CHAT_POLL="0.1"
 chat_tmp=""
+chat_spool=""
+chat_reader=""
 chat_pid=""
 chat_oldstty=""
 chat_input=""
@@ -217,6 +219,16 @@ chat_keepalive() {
 	return 0
 }
 
+chat_read_timed_out() {
+	local rc="$1"
+	local before="$2"
+
+	(( rc == 0 )) && return 1
+	(( rc > 128 )) && return 0
+	(( BASH_VERSINFO[0] < 4 )) || return 1
+	(( SECONDS - before >= CHAT_POLL ))
+}
+
 
 chat_help() {
 	chat_print "/quit              leave the chat" "left" "$yellow"
@@ -291,8 +303,10 @@ chat_command() {
 
 chat_cleanup() {
 	local pid="$chat_pid"
+	local reader="$chat_reader"
 
 	chat_pid=""
+	chat_reader=""
 
 	{ exec 3>&-; } 2>/dev/null || true
 
@@ -300,6 +314,11 @@ chat_cleanup() {
 		sleep 0.15
 		kill "$pid" 2>/dev/null || true
 		wait "$pid" 2>/dev/null || true
+	fi
+
+	if [[ -n "$reader" ]]; then
+		kill "$reader" 2>/dev/null || true
+		wait "$reader" 2>/dev/null || true
 	fi
 
 	{ exec 4>&-; } 2>/dev/null || true
@@ -312,6 +331,7 @@ chat_cleanup() {
 	if [[ -n "$chat_tmp" ]]; then
 		rm -rf "$chat_tmp"
 		chat_tmp=""
+		chat_spool=""
 	fi
 
 	return 0
@@ -373,9 +393,38 @@ chat_spawn() {
 chat_drain() {
 	local msg
 
+	if [[ -n "$chat_reader" ]]; then
+		chat_drain_spool
+		return 0
+	fi
+
 	while IFS= read -r -t "$CHAT_POLL" -u 4 msg; do
 		chat_incoming "$msg"
 	done
+}
+
+chat_drain_spool() {
+	local msg
+
+	[[ -s "$chat_spool" ]] || return 0
+
+	mv -f "$chat_spool" "$chat_spool.read" 2>/dev/null || return 0
+	while IFS= read -r msg; do
+		chat_incoming "$msg"
+	done < "$chat_spool.read"
+	rm -f "$chat_spool.read"
+}
+
+chat_start_reader() {
+	(( BASH_VERSINFO[0] < 4 )) || return 0
+	[[ -n "$chat_spool" ]] || return 0
+
+	(
+		while IFS= read -r -u 4 msg; do
+			printf '%s\n' "$msg" >> "$chat_spool"
+		done
+	) &
+	chat_reader=$!
 }
 
 chat_peer_check() {
@@ -388,7 +437,7 @@ chat_peer_check() {
 }
 
 chat_loop_tty() {
-	local key rc k
+	local key rc k before
 
 	while (( chat_quit == 0 )); do
 		chat_keepalive
@@ -396,10 +445,13 @@ chat_loop_tty() {
 		chat_peer_check || break
 
 		key=""
+		before=$SECONDS
 		IFS= read -r -s -n 1 -t "$CHAT_POLL" key
 		rc=$?
 
-		(( rc > 128 )) && continue
+		if (( rc != 0 )) && chat_read_timed_out "$rc" "$before"; then
+			continue
+		fi
 		if (( rc != 0 )); then
 			chat_unexpected=1
 			chat_err="input closed"
@@ -448,7 +500,7 @@ chat_loop_tty() {
 }
 
 chat_loop_pipe() {
-	local line rc
+	local line rc before
 
 	while (( chat_quit == 0 )); do
 		chat_keepalive
@@ -456,10 +508,13 @@ chat_loop_pipe() {
 		chat_peer_check || break
 
 		line=""
+		before=$SECONDS
 		IFS= read -r -t "$CHAT_POLL" line
 		rc=$?
 
-		(( rc > 128 )) && continue
+		if (( rc != 0 )) && chat_read_timed_out "$rc" "$before"; then
+			continue
+		fi
 		if (( rc != 0 )); then
 			chat_quit=1
 			break
@@ -573,6 +628,9 @@ chat_run_once() {
 		return 1
 	fi
 
+	chat_spool="$chat_tmp/incoming"
+	: > "$chat_spool" || chat_spool=""
+
 	trap 'chat_cleanup' EXIT
 	trap 'chat_quit=1' INT TERM
 	trap 'chat_width="$(getwidth)"' WINCH
@@ -594,6 +652,8 @@ chat_run_once() {
 
 	updatesession "$id" "status" "running" 2>/dev/null || true
 	updatesession "$id" "pid" "$chat_pid" 2>/dev/null || true
+
+	chat_start_reader
 
 	if [[ "$chat_tty" == "true" ]]; then
 		chat_render_prompt

@@ -21,13 +21,19 @@ The app is installed into ~/.iirc
 
 ### Requirements
 
-bash 3.2 or newer (macOS's default bash works)\
+bash 5 is recommended (macOS's default bash might lag)\
 netcat (`nc`, `ncat` or `netcat`)\
 curl or wget (installer only)\
 `ip` on Linux / `ipconfig` on Windows for local IP detection (optional)\
 
 Linux: `sudo apt install netcat-openbsd`\
 macOS: `nc` ships with the system\
+        To get bash 5, use
+```
+brew install bash
+echo "/usr/local/bin/bash" | sudo tee -a /etc/shells  # Intel
+echo "/opt/homebrew/bin/bash" | sudo tee -a /etc/shells # Apple silicon
+```
 Windows: use Git Bash or MSYS2 and install netcat there\
 
 ## Usage
@@ -60,7 +66,8 @@ Made completely using Bash, uses nc for connections and runs completely in termi
 
 ## Current limitations
 
-Might not work on networks with AP isolation, currently only tested for Linux, Windows and MacOS.
+Might not work on networks with AP isolation, currently only tested for Linux, Windows and MacOS.\
+Working towards having more than 2 people to chat on the same port.\
 
 
 ## Disclaimer
